@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relaxing Multi-Touch Smooth Trails</title>
+  <style>
+    /* Dynamic, flowing background */
+    body {
+      margin: 0;
+      overflow: hidden;
+      height: 100vh;
+      background: linear-gradient(45deg, #1e3c72, #2a5298, #1e3c72);
+      background-size: 600% 600%;
+      animation: gradientAnimation 25s ease infinite;
+      cursor: none;
+      touch-action: none;
+      font-family: sans-serif;
+    }
+
+    @keyframes gradientAnimation {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* Style for each pointer’s circle */
+    .circle {
+      position: absolute;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ff6ec7, #b24cff);
+      box-shadow: 0 0 20px #ff6ec7, 0 0 40px #b24cff, 0 0 60px #ff6ec7;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0.2);
+      transition: transform 0.2s ease;
+      display: block;
+    }
+
+    /* A subtle pulsating glow effect for added relaxation */
+    .circle::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,110,199,0.3), transparent);
+      transform: translate(-50%, -50%);
+      animation: pulse 3s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.8;
+      }
+      50% {
+        transform: translate(-50%, -50%) scale(1.2);
+        opacity: 0.4;
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.8;
+      }
+    }
+
+    /* Style for the trail particles */
+    .particle {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,156,219,0.8), transparent);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      animation: fadeOut 2.5s ease forwards;
+    }
+
+    @keyframes fadeOut {
+      0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1) rotate(0deg);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.5) rotate(45deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // Store active trails (one per pointerId)
+    const trails = new Map();
+
+    // Constants for appearance and behavior
+    const MAX_SCALE = 1.5;
+    const BASE_SCALE = 0.2;
+    const SPEED_FACTOR = 0.05;
+    const SPACING = 5; // Minimum pixel spacing between trail particles
+
+    /**
+     * Creates a new trail for the given pointer starting at (x, y).
+     */
+    function createTrail(x, y) {
+      const circle = document.createElement('div');
+      circle.classList.add('circle');
+      circle.style.left = `${x}px`;
+      circle.style.top = `${y}px`;
+      document.body.appendChild(circle);
+
+      return {
+        circle,
+        targetX: x,
+        targetY: y,
+        currentX: x,
+        currentY: y,
+        lastParticleX: x,
+        lastParticleY: y,
+        lastTimestamp: performance.now(),
+      };
+    }
+
+    /**
+     * Updates an individual trail:
+     * - Moves the circle smoothly toward the target.
+     * - Adjusts its scale based on movement speed.
+     * - Interpolates particles along the movement path.
+     */
+    function updateTrail(trail, timestamp) {
+      const dt = timestamp - trail.lastTimestamp || 1;
+
+      // Smooth movement using easing
+      const dx = trail.targetX - trail.currentX;
+      const dy = trail.targetY - trail.currentY;
+      trail.currentX += dx * 0.1;
+      trail.currentY += dy * 0.1;
+      trail.circle.style.left = `${trail.currentX}px`;
+      trail.circle.style.top = `${trail.currentY}px`;
+
+      // Scale based on speed
+      const distance = Math.hypot(dx, dy);
+      const speed = distance / dt;
+      const scale = Math.min(BASE_SCALE + speed * SPEED_FACTOR, MAX_SCALE);
+      trail.circle.style.transform = `translate(-50%, -50%) scale(${scale})`;
+
+      // Create a smooth trail by interpolating between the last particle and current position
+      const trailDx = trail.currentX - trail.lastParticleX;
+      const trailDy = trail.currentY - trail.lastParticleY;
+      const trailDist = Math.hypot(trailDx, trailDy);
+      if (trailDist >= SPACING) {
+        const steps = Math.floor(trailDist / SPACING);
+        for (let i = 1; i <= steps; i++) {
+          const interpX = trail.lastParticleX + (trailDx * i) / steps;
+          const interpY = trail.lastParticleY + (trailDy * i) / steps;
+          createParticle(interpX, interpY);
+        }
+        trail.lastParticleX = trail.currentX;
+        trail.lastParticleY = trail.currentY;
+      }
+      trail.lastTimestamp = timestamp;
+    }
+
+    /**
+     * Creates a particle at (x, y) that fades and rotates gently.
+     */
+    function createParticle(x, y) {
+      const particle = document.createElement('div');
+      particle.classList.add('particle');
+      particle.style.left = `${x}px`;
+      particle.style.top = `${y}px`;
+
+      // Randomize size slightly for an organic effect
+      const size = Math.random() * 10 + 5;
+      particle.style.width = `${size}px`;
+      particle.style.height = `${size}px`;
+
+      document.body.appendChild(particle);
+      setTimeout(() => particle.remove(), 2500);
+    }
+
+    /**
+     * Main animation loop: updates all active trails.
+     */
+    function animate(timestamp) {
+      trails.forEach(trail => {
+        updateTrail(trail, timestamp);
+      });
+      requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+
+    // Multi-touch pointer event handlers
+    document.addEventListener('pointerdown', (event) => {
+      if (!trails.has(event.pointerId)) {
+        const trail = createTrail(event.pageX, event.pageY);
+        trails.set(event.pointerId, trail);
+        event.target.setPointerCapture(event.pointerId);
+      }
+    });
+
+    document.addEventListener('pointermove', (event) => {
+      const trail = trails.get(event.pointerId);
+      if (trail) {
+        trail.targetX = event.pageX;
+        trail.targetY = event.pageY;
+      }
+    });
+
+    function endPointer(event) {
+      const trail = trails.get(event.pointerId);
+      if (trail) {
+        // Remove the circle when the pointer is released
+        trail.circle.remove();
+        trails.delete(event.pointerId);
+        event.target.releasePointerCapture(event.pointerId);
+      }
+    }
+
+    document.addEventListener('pointerup', endPointer);
+    document.addEventListener('pointercancel', endPointer);
+  </script>
+</body>
+</html>
